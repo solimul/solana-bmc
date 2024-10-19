@@ -104,7 +104,7 @@
     }
   },
   "init": {
-    "door_open": "true",
+    "door_open": "false",
     "elevator_moving": "false",
     "elevator_floor": "0"
   },
