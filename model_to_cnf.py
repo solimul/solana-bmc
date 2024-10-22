@@ -45,7 +45,7 @@ class Helper:
     def get_atom (self, s):
         return re.findall(r'(?<![&|^])\b(?:~)?([a-zA-Z_]\w*)\b', s)[0]
     
-     '''
+    '''
         This function extracts the value of an atom in a proposition. The atom can belong 
         to either a non-boolean or a boolean domain. 
 
@@ -78,8 +78,7 @@ class Helper:
     '''
 
     def get_val (self, atom):
-        atom = atom.rsplit('_', 1)[-1]
-        val = atom [len (atom)-1]
+        val = atom.rsplit('_', 1)[-1]
         if val.isdigit() == False:
             return None
         else:
@@ -132,7 +131,7 @@ class Helper:
     '''
 
     def normalize_formula (self, formula):
-        state_names = re.findall(r'(?<![&|^])\b(?:~)?([a-zA-Z_]\w*)\b', formula)
+        state_names = re.findall(r'(?<![&|^])\b(?:~)?([a-zA-Z_]\w*|\d+)\b', formula)
         state_names = list(set(state_names)) 
         symbols(state_names)
         formula = parse_expr(formula)
@@ -185,9 +184,12 @@ class Helper:
     '''
 
     def removeval (self, symbol):
-        part2 = symbol.rsplit('_', 1)[1]  #indicating a atom, which has int domain
-        if part2.isdigit():
-            return symbol.rsplit('_', 1)[0]
+        splitted_symbol = symbol.rsplit('_', 1)
+        last = ''
+        if len(splitted_symbol)>1:
+            last = splitted_symbol [1] 
+        if last.isdigit(): #indicating a atom, which has int domain
+            return splitted_symbol[0]
         else:
             return symbol
 
@@ -332,6 +334,9 @@ class Helper:
             lits = clause.split ("|")
             for lit in lits:
                 [atomsymbol, val, type] = self.get_atom_val_type (lit)
+                # print (lit)
+                # print ('------------------')
+                # print (atomsymbol, val, lit, lit.rsplit('_', 1)[1])
                 bool_var = 0 
                 bool_val = 1
                 if type == 'boolean':
@@ -344,6 +349,25 @@ class Helper:
             formula_clauses.append (formula_clause)
         
         return formula_clauses
+
+       
+    def extract_atom_info(self, atom):
+        # Regex pattern to match atoms with optional negation (~), atomsymbol, val (optional), and t
+        pattern = r'(~)?([a-zA-Z_]+)(_(\d+))?_(\d+)'
+        
+        # Search for matches
+        match = re.match(pattern, atom)
+        
+        if match:
+            negation = match.group(1)  # "~" if present, None if absent
+            atomsymbol = match.group(2)
+            val = match.group(4) if match.group(4) else None  # 'val' only if it exists, else None
+            t = match.group(5)  # Always extract t from the last part
+            return atomsymbol, val if val != None else None, t
+        return None
+                        
+
+
 
     '''
     The `Atom` class represents an atom (a propositional variable) in a logical system. 
@@ -501,7 +525,10 @@ class Specification (Helper):
     def build_safety_constraints (self):
         for formula in self.safety_property:
             formula = self.normalize_formula ("~("+formula+")")
-            self.safety_violation_constraints.append (formula)
+            formula = formula.split ('&')
+            formula = [f.replace('(','').replace (')','') for f in formula]
+            for f in formula:
+                self.safety_violation_constraints.append (f)
 
 
     '''
@@ -628,13 +655,48 @@ class CNFConverter (Specification, Helper):
                     self.nclauses += 1
     
     def build_safety_violation_cnf (self):
-        for t in range (0, self.steps+1):
-            bool_vars_t = self.state_to_cnf_vars[t]
-            for formula in self.safety_violation_constraints:
-                clauses = self.get_cnf_clause (formula, bool_vars_t, False)
-                for clause in clauses:
-                    self.safety_violation_clauses.append (clause)
-                    self.nclauses += 1
+        safety_formula = {}
+        self.safety_violation_clauses = []
+        c_str = ''
+        temp = [f"({constraint})" for constraint in self.safety_violation_constraints]
+        
+        self.normalize_formula("&".join(temp))
+        temp = [f"({constraint})" for constraint in self.safety_violation_constraints]
+        temp = [[re.sub(r'([a-zA-Z_]\w*)', r'\1_' + str(t), constraint) for constraint in temp] for t in range(self.steps + 1)]
+        temp = [ "&".join(lst) for lst in temp]
+        temp = [f"({constraint})" for constraint in temp]
+        temp = "|".join(temp)
+        temp = self.normalize_formula (temp)
+        clause_list = temp.split('&')
+        
+            
+            # # To store extracted results
+        results = []
+        # Process each clause
+        for clause in clause_list:
+            # Split each clause into individual atoms by '|'
+            clause_cnf = []
+            atoms = clause.split('|')
+            for atom in atoms:
+                atom = atom.strip('()')  # Strip any parentheses if present
+                [atomsymbol, val, t] = self.extract_atom_info(atom)
+                bool_var = self.state_to_cnf_vars [int(t)] [(atomsymbol, val)]
+                bool_val = 1
+                if '~' in atom:
+                    bool_val = -1
+                lit = bool_var*bool_val
+                clause_cnf.append (lit)
+            print (clause_cnf)
+            self.nclauses += 1
+            self.safety_violation_clauses.append (clause_cnf)
+
+        
+                
+            
+            # return results
+
+        #temp = [constraint[1:-1] if constraint.startswith('(') and constraint.endswith(')') else constraint for constraint in self.safety_violation_constraints]
+
 
     def merge_all_cnf_clauses (self):
         self.cnf_clauses = self.initial_state_clauses.copy()

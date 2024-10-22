@@ -1,0 +1,87 @@
+{
+  "states": {
+    "boolean":{
+      "error": ["true", "false"],
+      "loop_cond": ["true", "false"],
+      "array_end": ["true", "false"]
+    },
+    "int": {
+      "my_list_zero": ["10", "11"],
+      "my_list_one": ["11", "12"],
+      "my_list_two": ["12", "13"],
+      "my_list_three": ["13", "14"],
+      "index": ["0", "1", "2", "3", "4", "5"]
+    }
+  },
+  "init": "my_list_zero_10,my_list_one_11,my_list_two_12,my_list_three_13,index_0,loop_cond,~error,~array_end",
+  "transitions": {
+    "increment_i_0_to_1": {
+      "preconditions": [
+        "index_0 | loop_cond"
+      ],
+      "effects": [
+        "~my_list_zero_10 | my_list_zero_11",
+        "index_1",
+        "~error"
+      ]
+    },
+    "increment_i_1_to_2": {
+      "preconditions": [
+        "index_1 & loop_cond"
+      ],
+      "effects": [
+        "~my_list_one_11 | my_list_one_12",
+        "index_2",
+        "~error"
+      ]
+    },
+    "increment_i_2_to_3": {
+      "preconditions": [
+        "index_2 & loop_cond"
+      ],
+      "effects": [
+        "~my_list_two_12 | my_list_two_13",
+        "index_3",
+        "~error"
+      ]
+    },
+    "increment_i_3_to_4": {
+      "preconditions": [
+        "index_3 & loop_cond"
+      ],
+      "effects": [
+        "~my_list_three_13 | my_list_three_14",
+        "index_4",
+        "~error"
+      ]
+    },
+    "increment_i_4_to_5": {
+      "preconditions": [
+        "index_4 & loop_cond"
+      ],
+      "effects": [
+        "error",
+        "index_5"
+      ]
+    },
+    "array_end_reached": {
+      "preconditions": [
+        "index_4 & ~array_end"
+      ],
+      "effects": [
+        "array_end"
+      ]
+    },
+    "teminate": {
+      "preconditions": [
+        "index_5 & loop_cond"
+      ],
+      "effects": [
+        "~loop_cond"
+      ]
+    }
+  },
+  "safety": [
+    "~error"
+  ]
+}

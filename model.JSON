@@ -35,14 +35,6 @@
         "elevator_moving"
       ]
     },
-    "stop_move": {
-      "preconditions": [
-        "elevator_moving"
-      ],
-      "effects": [
-        "~elevator_moving"
-      ]
-    },
     "move_up": {
       "preconditions": [
         "elevator_moving",
@@ -108,4 +100,3 @@
     "~elevator_moving | ~door_open"
   ]
 }
-
