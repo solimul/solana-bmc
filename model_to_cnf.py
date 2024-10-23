@@ -77,7 +77,7 @@ class Helper:
                          otherwise None (for boolean atoms).
     '''
 
-    def get_val (self, atom):
+    def get_domain_val (self, atom):
         val = atom.rsplit('_', 1)[-1]
         if val.isdigit() == False:
             return None
@@ -183,7 +183,7 @@ class Helper:
                  symbol if no numeric value exists.
     '''
 
-    def removeval (self, symbol):
+    def remove_domain_val (self, symbol):
         splitted_symbol = symbol.rsplit('_', 1)
         last = ''
         if len(splitted_symbol)>1:
@@ -206,7 +206,7 @@ class Helper:
               from the literal using the `self.get_atom()` method.
 
         2. **Remove Numeric Value (if applicable)**:
-            - The `self.removeval()` method removes the numeric value (for atoms in 
+            - The `self.remove_domain_val()` method removes the numeric value (for atoms in 
               non-boolean domains) from the atom symbol, leaving the base atom name.
               If the atom is in the boolean domain, no numeric value is removed.
 
@@ -245,18 +245,22 @@ class Helper:
     '''
 
     def get_atom_val_type (self, lit):
-        atomsymbol = self.get_atom (lit)
-        atomsymbol0 = self.removeval (atomsymbol)
+        [atomsymbol, atomsymbol_no_domainval] = self.trim_proposition (lit)
         val = 1
-        type = self.symbol_atom_map [atomsymbol0].type
+        type = self.symbol_atom_map [atomsymbol_no_domainval].type
         if type == 'boolean':
             if '~' in lit:
                 val = 0
         else:
-            val = self.get_val (atomsymbol)  
-        return [atomsymbol0, val, type]
+            val = self.get_domain_val (atomsymbol)  
+        return [atomsymbol_no_domainval, val, type]
     
-        '''
+    def trim_proposition (self, proposition):
+        atomsymbol = self.get_atom (proposition)
+        atomsymbol_noval = self.remove_domain_val (atomsymbol)
+        return [atomsymbol, atomsymbol_noval]
+
+    '''
         This function takes a boolean formula in CNF (Conjunctive Normal Form), 
         parses it into individual clauses, and maps the literals to their corresponding 
         boolean variables or values using a provided mapping. It returns the parsed 
@@ -342,7 +346,7 @@ class Helper:
                 if type == 'boolean':
                     bool_var = map [(atomsymbol, None)]  
                 else:
-                    bool_var = map [(self.removeval (atomsymbol), str(val))]   
+                    bool_var = map [(self.remove_domain_val (atomsymbol), str(val))]   
                 if '~' in lit:
                     bool_val = -1  
                 formula_clause.append (bool_var*bool_val)
@@ -366,7 +370,6 @@ class Helper:
             return atomsymbol, val if val != None else None, t
         return None
                         
-
 
 
     '''
@@ -422,6 +425,7 @@ class Atom ():
             return [0, 1]
         else:
             return domain
+            
 
 
     '''
@@ -603,6 +607,19 @@ class Specification (Helper):
     '''
 
 class CNFConverter (Specification, Helper):
+    
+    def get_timed_constraints (self,constraints):
+        c_str = ''
+        temp = [f"({constraint})" for constraint in constraints]
+        self.normalize_formula("&".join(temp))
+        temp = [f"({constraint})" for constraint in constraints]
+        temp = [[re.sub(r'([a-zA-Z_]\w*)', r'\1_' + str(t), constraint) for constraint in temp] for t in range(self.steps + 1)]
+        temp = [ "&".join(lst) for lst in temp]
+        temp = [f"({constraint})" for constraint in temp]
+        temp = "|".join(temp)
+        temp = self.normalize_formula (temp)
+        return temp.split('&')
+
     def __init__ (self, steps, data):
         super ().__init__ (steps, data)
         self.nvars = 0
@@ -655,26 +672,9 @@ class CNFConverter (Specification, Helper):
                     self.nclauses += 1
     
     def build_safety_violation_cnf (self):
-        safety_formula = {}
-        self.safety_violation_clauses = []
-        c_str = ''
-        temp = [f"({constraint})" for constraint in self.safety_violation_constraints]
-        
-        self.normalize_formula("&".join(temp))
-        temp = [f"({constraint})" for constraint in self.safety_violation_constraints]
-        temp = [[re.sub(r'([a-zA-Z_]\w*)', r'\1_' + str(t), constraint) for constraint in temp] for t in range(self.steps + 1)]
-        temp = [ "&".join(lst) for lst in temp]
-        temp = [f"({constraint})" for constraint in temp]
-        temp = "|".join(temp)
-        temp = self.normalize_formula (temp)
-        clause_list = temp.split('&')
-        
-            
-            # # To store extracted results
+        clause_list = self.get_timed_constraints (self.safety_violation_constraints)    
         results = []
-        # Process each clause
         for clause in clause_list:
-            # Split each clause into individual atoms by '|'
             clause_cnf = []
             atoms = clause.split('|')
             for atom in atoms:
@@ -686,17 +686,8 @@ class CNFConverter (Specification, Helper):
                     bool_val = -1
                 lit = bool_var*bool_val
                 clause_cnf.append (lit)
-            print (clause_cnf)
             self.nclauses += 1
             self.safety_violation_clauses.append (clause_cnf)
-
-        
-                
-            
-            # return results
-
-        #temp = [constraint[1:-1] if constraint.startswith('(') and constraint.endswith(')') else constraint for constraint in self.safety_violation_constraints]
-
 
     def merge_all_cnf_clauses (self):
         self.cnf_clauses = self.initial_state_clauses.copy()
@@ -708,6 +699,8 @@ class CNFConverter (Specification, Helper):
 file = FileHandler (sys.argv [1], sys.argv [1].strip('.JSON')+"_k"+str(sys.argv [2])+".cnf")
 file.read_file ()
 cnfConverter = CNFConverter (int (sys.argv [2]), file.data)
+
 file.save_to_file ("p cnf "+str(cnfConverter.nvars)+" "+str(cnfConverter.nclauses), 
                     cnfConverter.cnf_clauses)
+
 
