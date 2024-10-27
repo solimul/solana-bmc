@@ -36,6 +36,21 @@ class FileHandler:
     Helper class containing helper methods
 '''
 class Helper:
+    underscore_str = "_"
+    atom_finder_pattern = r'(?<![&|^])\b(?:~)?([a-zA-Z_]\w*)\b'
+    atom_finder_pattern2 = r'(~)?([a-zA-Z_]+)(_(\d+))?_(\d+)'
+    state_finder_pattern = r'(?<![&|^])\b(?:~)?([a-zA-Z_]\w*|\d+)\b'
+    logicalANDstr = "&"
+    logicalORstr = "|"
+    space_str = " "
+    opening_square_brace = "("
+    closing_square_brace = ")"
+    comma_str = ","
+    implication_str = "Implies"
+    boolean_str = "boolean"
+    negation_str = "~"
+
+
     '''
         gets a proposition as input, and returns the atom in the proposition
         Exacmple: 
@@ -43,7 +58,7 @@ class Helper:
              output: x_0
     '''
     def get_atom (self, s):
-        return re.findall(r'(?<![&|^])\b(?:~)?([a-zA-Z_]\w*)\b', s)[0]
+        return re.findall(self.atom_finder_pattern, s)[0]
     
     '''
         This function extracts the value of an atom in a proposition. The atom can belong 
@@ -131,12 +146,12 @@ class Helper:
     '''
 
     def normalize_formula (self, formula):
-        state_names = re.findall(r'(?<![&|^])\b(?:~)?([a-zA-Z_]\w*|\d+)\b', formula)
+        state_names = re.findall(self.state_finder_pattern, formula)
         state_names = list(set(state_names)) 
         symbols(state_names)
         formula = parse_expr(formula)
         formula = to_cnf(formula)
-        formula = str(formula).replace(" ","")
+        formula = str(formula).replace(self.space_str,"")
         return formula
 
         '''
@@ -184,7 +199,7 @@ class Helper:
     '''
 
     def remove_domain_val (self, symbol):
-        splitted_symbol = symbol.rsplit('_', 1)
+        splitted_symbol = symbol.rsplit(self.underscore_str, 1)
         last = ''
         if len(splitted_symbol)>1:
             last = splitted_symbol [1] 
@@ -248,8 +263,8 @@ class Helper:
         [atomsymbol, atomsymbol_no_domainval] = self.trim_proposition (lit)
         val = 1
         type = self.symbol_atom_map [atomsymbol_no_domainval].type
-        if type == 'boolean':
-            if '~' in lit:
+        if type == self.boolean_str:
+            if self.negation_str in lit:
                 val = 0
         else:
             val = self.get_domain_val (atomsymbol)  
@@ -331,11 +346,11 @@ class Helper:
     def get_cnf_clause (self, formula, map, normalize):
         if normalize:
             formula = self.normalize_formula (formula)
-        clauses = formula.split ("&")
+        clauses = formula.split (self.logicalANDstr)
         formula_clauses = []
         for clause in clauses:
             formula_clause = []
-            lits = clause.split ("|")
+            lits = clause.split (self.logicalORstr)
             for lit in lits:
                 [atomsymbol, val, type] = self.get_atom_val_type (lit)
                 # print (lit)
@@ -343,11 +358,11 @@ class Helper:
                 # print (atomsymbol, val, lit, lit.rsplit('_', 1)[1])
                 bool_var = 0 
                 bool_val = 1
-                if type == 'boolean':
+                if type == self.boolean_str:
                     bool_var = map [(atomsymbol, None)]  
                 else:
                     bool_var = map [(self.remove_domain_val (atomsymbol), str(val))]   
-                if '~' in lit:
+                if self.negation_str in lit:
                     bool_val = -1  
                 formula_clause.append (bool_var*bool_val)
             formula_clauses.append (formula_clause)
@@ -356,12 +371,7 @@ class Helper:
 
        
     def extract_atom_info(self, atom):
-        # Regex pattern to match atoms with optional negation (~), atomsymbol, val (optional), and t
-        pattern = r'(~)?([a-zA-Z_]+)(_(\d+))?_(\d+)'
-        
-        # Search for matches
-        match = re.match(pattern, atom)
-        
+        match = re.match(self.atom_finder_pattern2, atom)
         if match:
             negation = match.group(1)  # "~" if present, None if absent
             atomsymbol = match.group(2)
@@ -414,14 +424,14 @@ class Helper:
         An instance of the Atom class with the specified attributes.
     '''
 
-class Atom ():
+class Atom (Helper):
     def __init__ (self,symbol, type, domain):
         self.symbol = symbol
         self.type = type
         self.domain = self.parse_domain (type, domain) 
     
     def parse_domain (self, type, domain):
-        if type == 'boolean':
+        if type == self.boolean_str:
             return [0, 1]
         else:
             return domain
@@ -491,13 +501,15 @@ class Atom ():
     '''
 
 class Specification (Helper):
-    def __init__ (self, steps, data):
+    def __init__ (self, steps, data, incremental_encoding):
         self.state_variables = data [0]
         self.initial_state = data [1]
-        self.initial_state = self.initial_state.split (',')
+        self.initial_state = self.initial_state.split (self.comma_str)
         self.transition_relations = data [2]
         self.safety_property = data [3]
         self.steps = steps
+        self.incremental_encoding = incremental_encoding
+        self.temporal_atom = "TV"
         self.state_atoms = []
         self.initial_state_constraints = []
         self.transition_constraints = {}
@@ -508,12 +520,19 @@ class Specification (Helper):
         self.build_transition_constraints ()
         self.build_safety_constraints ()
 
+    def add_temporal_atom (self):
+        atom = Atom (self.temporal_atom, self.boolean_str, None)
+        self.state_atoms.append (atom)
+        self.symbol_atom_map [atom.symbol] = atom
+
     def create_state_atoms (self):
         for type, states in self.state_variables.items():
             for symbol, val in states.items():
                 atom = Atom (symbol, type, val)
                 self.state_atoms.append (atom)
                 self.symbol_atom_map [symbol] = atom 
+        if self.incremental_encoding:
+            self.add_temporal_atom ()
 
     def build_initial_state_constraints (self):
         for formula in self.initial_state:
@@ -522,18 +541,25 @@ class Specification (Helper):
 
     def build_transition_constraints (self):
         for rule_name, rule in self.transition_relations.items():
-            p =  " & ".join(rule ["preconditions"])
-            q =  " & ".join(rule ["effects"])
-            self.transition_constraints [rule_name] = self.normalize_formula ("Implies ("+p+", "+q+")")
+            joining_str = self.space_str+self.logicalANDstr+self.space_str
+            p =  joining_str.join(rule ["preconditions"])
+            q =  joining_str.join(rule ["effects"])
+            formula = self.implication_str+self.space_str+self.opening_square_brace+p+self.comma_str+self.space_str+q+self.closing_square_brace
+            if self.incremental_encoding:
+                formula = self.temporal_atom+self.space_str+self.logicalORstr+self.space_str+self.opening_square_brace+formula+self.closing_square_brace
+            formula = self.normalize_formula (formula)
+            self.transition_constraints [rule_name] = formula
     
     def build_safety_constraints (self):
         for formula in self.safety_property:
-            formula = self.normalize_formula ("~("+formula+")")
-            formula = formula.split ('&')
-            formula = [f.replace('(','').replace (')','') for f in formula]
+            prefix = ''
+            if self.incremental_encoding:
+                prefix = self.temporal_atom+self.space_str+self.logicalORstr+self.space_str
+            formula = self.normalize_formula (prefix+self.negation_str+self.opening_square_brace+formula+self.closing_square_brace)         
+            formula = formula.split (self.logicalANDstr)
+            formula = [f.replace(self.opening_square_brace,'').replace (self.closing_square_brace,'') for f in formula]
             for f in formula:
                 self.safety_violation_constraints.append (f)
-
 
     '''
     The `CNFConverter` class is responsible for converting a system specification into 
@@ -609,22 +635,21 @@ class Specification (Helper):
 class CNFConverter (Specification, Helper):
     
     def get_timed_constraints (self,constraints):
-        c_str = ''
-        temp = [f"({constraint})" for constraint in constraints]
-        self.normalize_formula("&".join(temp))
-        temp = [f"({constraint})" for constraint in constraints]
-        temp = [[re.sub(r'([a-zA-Z_]\w*)', r'\1_' + str(t), constraint) for constraint in temp] for t in range(self.steps + 1)]
-        temp = [ "&".join(lst) for lst in temp]
-        temp = [f"({constraint})" for constraint in temp]
-        temp = "|".join(temp)
-        temp = self.normalize_formula (temp)
-        return temp.split('&')
+        modified_constraints = []
+        for t in range(0, steps + 1):
+            for element in self.safety_violation_constraints:
+                atoms = element.split(self.logicalORstr)
+                updated_atoms = [atom + self.underscore_str + str(t) for atom in atoms]            
+                modified_constraints.append(self.logicalORstr.join(updated_atoms))
+        return modified_constraints
 
-    def __init__ (self, steps, data):
-        super ().__init__ (steps, data)
+    def __init__ (self, incremental_encoding, steps, data):
+        super ().__init__ (steps, data, incremental_encoding)
         self.nvars = 0
         self.nclauses = 0
         self.vars = []
+        self.temporal_bool_vars = {}
+        self.temporal_timed_atom = {}
         self.state_to_cnf_vars = {}
         self.initial_state_clauses = []
         self.transition_clauses = []
@@ -638,18 +663,25 @@ class CNFConverter (Specification, Helper):
         
              
     def build_state_to_cnf_vars(self):
-        idx = 0
-        for t in range(0, self.steps + 1):  
+        idx = 0        
+        for t in range(0, self.steps + 1):
+            if self.incremental_encoding:
+                self.temporal_bool_vars [t] = {}
+                self.temporal_timed_atom [t] = {}
             self.state_to_cnf_vars[t] = {}  
             for atom in self.state_atoms:
                 self.state_to_cnf_vars[t] [atom.symbol] = []
-                if atom.type == 'boolean':
+                if atom.type == self.boolean_str:
                     idx = idx + 1  
                     self.state_to_cnf_vars[t] [(atom.symbol, None)] = idx
                 else:
                     for val in atom.domain:
                         idx = idx + 1
                         self.state_to_cnf_vars[t] [(atom.symbol, val)] = idx
+            if self.incremental_encoding:
+                idx += 1
+                self.temporal_bool_vars [t] = idx
+                self.temporal_timed_atom [t] = self.temporal_atom+self.underscore_str+str (t)
         self.nvars = idx
         self.vars = list (range (1, self.nvars+1))
 
@@ -668,10 +700,15 @@ class CNFConverter (Specification, Helper):
             for rule_name, formula in self.transition_constraints.items():
                 clauses = self.get_cnf_clause (formula, bool_vars_t, False)
                 for clause in clauses:
+                    if self.incremental_encoding:
+                        temporal_var = self.temporal_bool_vars [t]
+                        clause.insert(0, -temporal_var)
                     self.transition_clauses.append (clause)
                     self.nclauses += 1
     
     def build_safety_violation_cnf (self):
+        # self.safety_violation_constraints is a list of conjuncts eg., ['door_open', 'elevator_moving', '~door_open|~elevator_floor_3']
+     
         clause_list = self.get_timed_constraints (self.safety_violation_constraints)    
         results = []
         for clause in clause_list:
@@ -682,7 +719,7 @@ class CNFConverter (Specification, Helper):
                 [atomsymbol, val, t] = self.extract_atom_info(atom)
                 bool_var = self.state_to_cnf_vars [int(t)] [(atomsymbol, val)]
                 bool_val = 1
-                if '~' in atom:
+                if self.negation_str in atom:
                     bool_val = -1
                 lit = bool_var*bool_val
                 clause_cnf.append (lit)
@@ -695,10 +732,21 @@ class CNFConverter (Specification, Helper):
         self.cnf_clauses.extend (self.safety_violation_clauses)
  
 
+if len(sys.argv) != 4:
+    print("Error: Exactly three parameters (file_path, steps, incremental_encoding) are required.")
+    sys.exit(1)  
 
-file = FileHandler (sys.argv [1], sys.argv [1].strip('.JSON')+"_k"+str(sys.argv [2])+".cnf")
+try:
+    file_path = sys.argv[1]
+    steps = int(sys.argv[2])  
+    incremental_encoding = int(sys.argv[3])  
+except ValueError:
+    print("Error: 'steps' and 'incremental_encoding' must be integers.")
+    sys.exit(1)
+
+file = FileHandler (file_path, file_path.strip('.JSON')+"_k"+str(steps)+".cnf")
 file.read_file ()
-cnfConverter = CNFConverter (int (sys.argv [2]), file.data)
+cnfConverter = CNFConverter (int (incremental_encoding), steps, file.data)
 
 file.save_to_file ("p cnf "+str(cnfConverter.nvars)+" "+str(cnfConverter.nclauses), 
                     cnfConverter.cnf_clauses)

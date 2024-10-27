@@ -97,6 +97,6 @@
     }
   },
   "safety": [
-    "~elevator_moving | ~door_open"
+    "~(elevator_moving | ~door_open) | (elevator_moving & elevator_floor_2)"
   ]
 }
