@@ -1,0 +1,6 @@
+#define VERSION "2.1.0"
+#define IDENTIFIER "7e69cd35c3269f05e48d301cdfe90e1d897d2ad0"
+#define SHORTID "7e69cd3"
+#define COMPILER "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0"
+#define FLAGS "-DIPASIR -Wall -Wextra -O3 -DNDEBUG -fPIC"
+#define DATE "Mon Oct 28 12:10:01 MDT 2024 Linux solimuls-rog 5.15.0-124-generic x86_64"

@@ -3,15 +3,15 @@ import sys
 from sympy import symbols
 from sympy.logic.boolalg import to_cnf, Or, And, Not, Implies, Equivalent
 from sympy.parsing.sympy_parser import parse_expr
-import re
+import re, os
 
 '''
    Hanldles File Operations
 '''
 class FileHandler:
-    def __init__(self, input_file, output_file):
+    def __init__(self, input_file, output_file, additional_file):
         self.__input_file = input_file
-        self.__output_file = output_file
+        self.output_files = [output_file, additional_file]
         self.data = []
 
     def read_file (self):
@@ -26,12 +26,16 @@ class FileHandler:
     
         self.data = [states, init, transitions, safety]
 
-    def save_to_file(self, header, clauses):
-        with open(self.__output_file, 'w') as f:
-            f.write(header + '\n')
-            for clause in clauses:
-                clause = ' '.join(map(str, clause))
-                f.write(clause + ' 0\n') 
+    def save_to_file(self, file_index, header, data):
+        with open(self.output_files[file_index], 'w') as f:                
+            if isinstance(data[0], (int, float, str)):
+                f.write(','.join(map(str, data)) + '\n')
+            else:
+                f.write(header + '\n')
+                for item in data:
+                    item = ' '.join(map(str, item))
+                    f.write(item + ' 0\n')
+
 '''
     Helper class containing helper methods
 '''
@@ -553,8 +557,8 @@ class Specification (Helper):
     def build_safety_constraints (self):
         for formula in self.safety_property:
             prefix = ''
-            if self.incremental_encoding:
-                prefix = self.temporal_atom+self.space_str+self.logicalORstr+self.space_str
+            # if self.incremental_encoding:
+            #     prefix = self.temporal_atom+self.space_str+self.logicalORstr+self.space_str
             formula = self.normalize_formula (prefix+self.negation_str+self.opening_square_brace+formula+self.closing_square_brace)         
             formula = formula.split (self.logicalANDstr)
             formula = [f.replace(self.opening_square_brace,'').replace (self.closing_square_brace,'') for f in formula]
@@ -636,7 +640,7 @@ class CNFConverter (Specification, Helper):
     
     def get_timed_constraints (self,constraints):
         modified_constraints = []
-        for t in range(0, steps + 1):
+        for t in range(0, self.steps + 1):
             for element in self.safety_violation_constraints:
                 atoms = element.split(self.logicalORstr)
                 updated_atoms = [atom + self.underscore_str + str(t) for atom in atoms]            
@@ -666,8 +670,9 @@ class CNFConverter (Specification, Helper):
         idx = 0        
         for t in range(0, self.steps + 1):
             if self.incremental_encoding:
-                self.temporal_bool_vars [t] = {}
-                self.temporal_timed_atom [t] = {}
+                idx += 1
+                self.temporal_bool_vars [t] = idx
+                self.temporal_timed_atom [t] = self.temporal_atom+self.underscore_str+str (t)
             self.state_to_cnf_vars[t] = {}  
             for atom in self.state_atoms:
                 self.state_to_cnf_vars[t] [atom.symbol] = []
@@ -678,19 +683,17 @@ class CNFConverter (Specification, Helper):
                     for val in atom.domain:
                         idx = idx + 1
                         self.state_to_cnf_vars[t] [(atom.symbol, val)] = idx
-            if self.incremental_encoding:
-                idx += 1
-                self.temporal_bool_vars [t] = idx
-                self.temporal_timed_atom [t] = self.temporal_atom+self.underscore_str+str (t)
         self.nvars = idx
         self.vars = list (range (1, self.nvars+1))
 
    
     def build_initial_state_cnf (self):
         init_state_bool_vars = self.state_to_cnf_vars[0]
+        temporal_var = self.temporal_bool_vars [0]
         for formula in self.initial_state_constraints:
             clauses = self.get_cnf_clause (formula, init_state_bool_vars, True)
             for clause in clauses:
+                clause.insert(0, -temporal_var)
                 self.initial_state_clauses.append (clause)
                 self.nclauses += 1
 
@@ -711,6 +714,7 @@ class CNFConverter (Specification, Helper):
      
         clause_list = self.get_timed_constraints (self.safety_violation_constraints)    
         results = []
+        temporal_var = None
         for clause in clause_list:
             clause_cnf = []
             atoms = clause.split('|')
@@ -723,8 +727,13 @@ class CNFConverter (Specification, Helper):
                     bool_val = -1
                 lit = bool_var*bool_val
                 clause_cnf.append (lit)
+                if temporal_var is None:
+                    temporal_var = self.temporal_bool_vars [int(t)]
+            
+            clause_cnf.insert (0,  -temporal_var)
             self.nclauses += 1
             self.safety_violation_clauses.append (clause_cnf)
+            temporal_var = None 
 
     def merge_all_cnf_clauses (self):
         self.cnf_clauses = self.initial_state_clauses.copy()
@@ -732,23 +741,28 @@ class CNFConverter (Specification, Helper):
         self.cnf_clauses.extend (self.safety_violation_clauses)
  
 
-if len(sys.argv) != 4:
-    print("Error: Exactly three parameters (file_path, steps, incremental_encoding) are required.")
-    sys.exit(1)  
+def spec2cnf (inputpath, ouputdir, steps, incremental):
+    directory_path = os.path.dirname(inputpath)
+    file_name = os.path.splitext(os.path.basename(inputpath))[0]
+    
+    if len(directory_path)>0:
+        directory_path += "/"
 
-try:
-    file_path = sys.argv[1]
-    steps = int(sys.argv[2])  
-    incremental_encoding = int(sys.argv[3])  
-except ValueError:
-    print("Error: 'steps' and 'incremental_encoding' must be integers.")
-    sys.exit(1)
+    cnf_file_path = ouputdir+"/"+file_name+"_k"+str(steps)+".cnf"
+    assumptions_file_path = ouputdir+"/"+file_name+"_assumptions_k"
 
-file = FileHandler (file_path, file_path.strip('.JSON')+"_k"+str(steps)+".cnf")
-file.read_file ()
-cnfConverter = CNFConverter (int (incremental_encoding), steps, file.data)
+    file = FileHandler (inputpath,cnf_file_path, assumptions_file_path)
+    file.read_file ()
 
-file.save_to_file ("p cnf "+str(cnfConverter.nvars)+" "+str(cnfConverter.nclauses), 
+    cnfConverter = CNFConverter (incremental, steps, file.data)
+    
+    cnf_header = "p cnf "+str(cnfConverter.nvars)+" "+str(cnfConverter.nclauses)
+    file.save_to_file (0, cnf_header,
                     cnfConverter.cnf_clauses)
+    file.save_to_file (1, cnf_header,
+                     list(cnfConverter.temporal_bool_vars.values()))
+
+    return [cnf_file_path, assumptions_file_path]
+    
 
 

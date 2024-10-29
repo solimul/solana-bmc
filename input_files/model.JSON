@@ -1,0 +1,102 @@
+{
+  "states": {
+    "boolean": {
+      "door_open": ["true", "false"],
+      "elevator_moving": ["true", "false"]
+    },
+    "int": {
+      "elevator_floor": ["0", "1", "2", "3"]
+    }
+  },
+  "init": "~door_open,~elevator_moving,elevator_floor_0",
+  "transitions": {
+    "open_door": {
+      "preconditions": [
+        "~door_open",
+        "~elevator_moving"
+      ],
+      "effects": [
+        "door_open"
+      ]
+    },
+    "close_door": {
+      "preconditions": [
+        "door_open"
+      ],
+      "effects": [
+        "~door_open"
+      ]
+    },
+    "start_move": {
+      "preconditions": [
+        "~door_open"
+      ],
+      "effects": [
+        "elevator_moving"
+      ]
+    },
+    "move_up": {
+      "preconditions": [
+        "elevator_moving",
+        "~door_open",
+        "elevator_floor_0"
+      ],
+      "effects": [
+        "elevator_floor_1"
+      ]
+    },
+    "move_up_1_to_2": {
+      "preconditions": [
+        "elevator_moving",
+        "~door_open",
+        "elevator_floor_1"
+      ],
+      "effects": [
+        "elevator_floor_2"
+      ]
+    },
+    "move_up_2_to_3": {
+      "preconditions": [
+        "elevator_moving",
+        "~door_open",
+        "elevator_floor_2"
+      ],
+      "effects": [
+        "elevator_floor_3"
+      ]
+    },
+    "move_down_3_to_2": {
+      "preconditions": [
+        "elevator_moving",
+        "~door_open",
+        "elevator_floor_3"
+      ],
+      "effects": [
+        "elevator_floor_2"
+      ]
+    },
+    "move_down_2_to_1": {
+      "preconditions": [
+        "elevator_moving",
+        "~door_open",
+        "elevator_floor_2"
+      ],
+      "effects": [
+        "elevator_floor_1"
+      ]
+    },
+    "move_down_1_to_0": {
+      "preconditions": [
+        "elevator_moving",
+        "~door_open",
+        "elevator_floor_1"
+      ],
+      "effects": [
+        "elevator_floor_0"
+      ]
+    }
+  },
+  "safety": [
+    "~elevator_moving | ~door_open"
+  ]
+}
